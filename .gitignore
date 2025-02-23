@@ -1,0 +1,86 @@
+# Python
+__pycache__/
+
+
+# Environments
+.env
+.env.local
+.env.dev
+.env.prod
+venv/
+ENV/
+env.bak/
+venv.bak/
+pythonenv*
+
+
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+
+# AWS
+.aws/
+*.pem
+*.key
+*.cer
+
+# Logs
+*.log
+logs/
+*.log.*
+!src/core/logging.py
+
+# Local development
+.cache
+.coverage
+htmlcov/
+.coverage.*
+.pytest_cache/
+.mypy_cache/
+
+# Testing
+test-results.xml
+junit.xml
+
+# OS generated
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific
+/tmp/
+!src/tests/
+*.mp3
+*.wav
+*.ogg
+*.flac
+uploads/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Oracle (future)
+oci_config
+*.ora
+wallet/
+
+# Langchain/other future services
+models/
+.onnx
+*.bin
+*.h5
+*.pt
+*.pth
+
+# Dependency directories
+site-packages/

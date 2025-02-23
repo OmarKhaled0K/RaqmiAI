@@ -139,3 +139,20 @@ Common issues and solutions:
 
 ---
 
+## To start the project:
+
+1. Set up your virtual environment:
+```bash
+python -m venv venv
+source venv/bin/activate  # Linux/MacOS
+venv\Scripts\activate  # Windows
+```
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+3. Start the development server:
+```bash
+uvicorn main:app --reload
+```
+
