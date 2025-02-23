@@ -1,10 +1,10 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
+import os
 class Settings(BaseSettings):
     PROJECT_NAME: str = "AI Voice Chat"
     VERSION: str = "0.1.0"
     ENV: str = "development"
-    LOG_LEVEL: str = "INFO"
+    
     
     # AWS Configuration
     AWS_ACCESS_KEY_ID: str = ""
@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     AWS_TRANSCRIBE_LANGUAGE: str = "auto"
     AWS_POLLY_VOICE_EN: str = "Joanna"
     AWS_POLLY_VOICE_AR: str = "Zeina"
+
+    LOG_LEVEL: str = "INFO"
+    LOGGER_NAME: str = "ai-voice-chat"
+    LOGS_DIR = os.path.join(os.getcwd(),"logs")
+    LOG_FILE_PATH = os.getenv(
+        "LOG_FILE_PATH", os.path.join(LOGS_DIR, "logs.log"))
     
     class Config:
         env_file = ".env"
