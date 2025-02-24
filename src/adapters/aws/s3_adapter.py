@@ -16,7 +16,8 @@ class S3Adapter:
             self.client.upload_fileobj(
                 file,
                 settings.AWS_S3_BUCKET_NAME,
-                file_name
+                file_name,
+                ExtraArgs={'ACL': 'public-read'}
             )
             return f"https://{settings.AWS_S3_BUCKET_NAME}.s3.{settings.AWS_REGION}.amazonaws.com/{file_name}"
         except ClientError as e:
