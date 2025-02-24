@@ -17,11 +17,17 @@ class Settings(BaseSettings):
     AWS_POLLY_VOICE_EN: str = "Joanna"
     AWS_POLLY_VOICE_AR: str = "Zeina"
 
+    COMPANY_NAME:str="RQMII"
+    INDUSTRY:str="IT"
+    PRODUCTS_SERVICES:str="AI-VOICE-TO-VOICE-CHAT"
+    TARGET_AUDIENCE:str="ALL-ARAB-CITIZENS"
+    LOCATION:str="riyadh-saudi-arabia"
+
     LOG_LEVEL: str = "INFO"
-    LOGGER_NAME: str = "ai-voice-chat"
-    LOGS_DIR = os.path.join(os.getcwd(),"logs")
-    LOG_FILE_PATH = os.getenv(
-        "LOG_FILE_PATH", os.path.join(LOGS_DIR, "logs.log"))
+    # LOGGER_NAME: str = "ai-voice-chat"
+    # LOGS_DIR = os.path.join(os.getcwd(),"logs")
+    # LOG_FILE_PATH = os.getenv(
+        # "LOG_FILE_PATH", os.path.join(LOGS_DIR, "logs.log"))
     
     class Config:
         env_file = ".env"
