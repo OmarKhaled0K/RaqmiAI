@@ -84,3 +84,4 @@ models/
 
 # Dependency directories
 site-packages/
+.env
