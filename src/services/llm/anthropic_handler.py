@@ -1,7 +1,7 @@
 import json
 import boto3
 from src.core.config import settings
-
+from .prompts.base_prompts import Prompts
 class ClaudeHandler:
     def __init__(self):
         self.client = boto3.client(
@@ -11,12 +11,13 @@ class ClaudeHandler:
             region_name=settings.AWS_REGION
         )
     
-    def generate_response(self, text: str) -> str:
-        system_prompt_ar = "You are a helpful AI assistant. Respond in Arabic."
-        system_prompt_en = "You are a helpful AI assistant. Respond in English."
-        
-        is_arabic = any('\u0600' <= char <= '\u06FF' for char in text)
-        system_prompt = system_prompt_ar if is_arabic else system_prompt_en
+    def generate_response(self, text: str,**kwargs) -> str:
+        system_prompt = Prompts.COMPANY_SYSTEM_PROMPT.format(company_name=settings.COMPANY_NAME,
+                                                      industry = settings.INDUSTRY,
+                                                      products_services=settings.PRODUCTS_SERVICES,
+                                                      target_audience=settings.TARGET_AUDIENCE,
+                                                      location=settings.LOCATION)
+        user_prompt = Prompts.USER_PROMPT.format(record_text=text)
 
         # Create the proper request body format
         body = {
@@ -25,7 +26,7 @@ class ClaudeHandler:
                 "role": "user",
                 "content": [{
                     "type": "text",
-                    "text": text
+                    "text": user_prompt
                 }]
             }],
             "system": system_prompt,
