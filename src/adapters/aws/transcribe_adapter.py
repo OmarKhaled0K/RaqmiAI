@@ -24,10 +24,10 @@ class TranscribeAdapter:
             TranscriptionJobName=job_name,
             Media={'MediaFileUri': media_uri},
             MediaFormat='wav',
-            LanguageCode=settings.AWS_TRANSCRIBE_LANGUAGE,
+            LanguageCode='ar-AE',
             Settings={
                 'ShowSpeakerLabels': False,
-                'ChannelIdentification': False
+                'ChannelIdentification': False,
             }
         )
 
