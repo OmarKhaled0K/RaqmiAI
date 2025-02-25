@@ -30,8 +30,8 @@ class ClaudeHandler:
                 }]
             }],
             "system": system_prompt,
-            "max_tokens": 1000,
-            "temperature": 0.5
+            "max_tokens": 250,
+            "temperature": 0
         }
 
         # Convert to JSON bytes

@@ -6,7 +6,7 @@ app = FastAPI(title=settings.PROJECT_NAME, version=settings.VERSION)
 
 # Include routers
 app.include_router(health.router)
-app.include_router(audio.router, prefix="/audio", tags=["audio"])
+app.include_router(audio.router, prefix="/audio")
 # app.include_router(chat.router, prefix="/chat", tags=["chat"])
 
 if __name__ == "__main__":
