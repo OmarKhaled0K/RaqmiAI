@@ -1,6 +1,7 @@
-from fastapi import APIRouter, UploadFile, HTTPException,File, UploadFile
+from fastapi import APIRouter, File, UploadFile, HTTPException
+from fastapi.responses import JSONResponse
 from src.adapters.aws.s3_adapter import S3Adapter
-from src.adapters.aws.transcribe_adapter import TranscribeAdapter,TranscribeAdapterStreaming
+from src.adapters.aws.transcribe_adapter import TranscribeAdapter
 from src.adapters.aws.transcribe_streaming_adapter import AudioTranscriptionService
 from src.services.llm.anthropic_handler import ClaudeHandler
 from src.adapters.aws.polly_adapter import PollyAdapter
@@ -8,233 +9,290 @@ import time
 import tempfile
 import os
 from typing import Dict, Optional
-# from src.core.logging import logger
-from io import BytesIO
-router = APIRouter()
+from pydantic import BaseModel
 
-@router.post("/process-audio",tags=["Full-Audio-Processing-no-streaming"])
-async def process_audio(file: UploadFile):
+# Create router with a meaningful prefix
+router = APIRouter(prefix="/audio-processing", tags=["Audio Processing"])
+
+# Define request and response models
+class TranscriptionRequest(BaseModel):
+    s3_url: str
+
+class TextProcessingRequest(BaseModel):
+    text: str
+
+class AudioProcessingResponse(BaseModel):
+    input_audio: Optional[str] = None
+    transcription: Optional[str] = None
+    response_text: Optional[str] = None
+    response_audio: Optional[str] = None
+    processing_time: Dict[str, float]
+    total_time: float
+
+# Helper functions
+async def create_temp_audio_file(file: UploadFile) -> str:
+    """Create a temporary file from the uploaded audio file."""
+    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_audio:
+        content = await file.read()
+        temp_audio.write(content)
+        return temp_audio.name
+
+def clean_temp_file(file_path: str) -> None:
+    """Clean up temporary file."""
+    try:
+        if os.path.exists(file_path):
+            os.unlink(file_path)
+    except Exception as e:
+        print(f"Warning: Failed to delete temporary file {file_path}: {str(e)}")
+
+
+# API Endpoints
+@router.post("/complete", response_model=AudioProcessingResponse, 
+             summary="Process audio through the complete pipeline")
+async def process_audio_complete(file: UploadFile = File(...)):
+    """
+    Process audio through the complete pipeline:
+    1. Upload audio to S3
+    2. Transcribe audio to text
+    3. Generate LLM response
+    4. Convert response to speech
+    """
+    start_time = time.time()
+    processing_times = {}
+    
     try:
         # 1. Upload to S3
         s3_start_time = time.time()
-        s3 = S3Adapter()
-        s3_url = await s3.upload_audio(file.file, file.filename)
-        s3_end_time = time.time()
-        s3_time = s3_end_time - s3_start_time
-        print(f"S3 upload time: {s3_time} seconds")
-        print(s3_url)
+        s3_adapter = S3Adapter()
+        s3_url = await s3_adapter.upload_audio(file.file, file.filename)
+        processing_times["s3_upload"] = time.time() - s3_start_time
         
         # 2. Transcribe audio
         transcribe_start_time = time.time()
-        transcribe = TranscribeAdapter()
-        text = transcribe.transcribe_audio(s3_url)
-        transcribe_end_time = time.time()
-        transcribe_time = transcribe_end_time - transcribe_start_time
-        print(f"Transcribe time: {transcribe_time} seconds")
-        print(text)
+        transcribe_adapter = TranscribeAdapter()
+        transcription = transcribe_adapter.transcribe_audio(s3_url)
+        processing_times["transcription"] = time.time() - transcribe_start_time
         
         # 3. Generate LLM response
         llm_start_time = time.time()
-        claude = ClaudeHandler()
-        response_text = claude.generate_response(text)
-        llm_end_time = time.time()
-        llm_time = llm_end_time - llm_start_time
-        print(f"LLM time: {llm_time} seconds")
-        print(response_text)
+        claude_handler = ClaudeHandler()
+        response_text = claude_handler.generate_response(transcription)
+        processing_times["llm_processing"] = time.time() - llm_start_time
         
         # 4. Convert to speech
         polly_start_time = time.time()
-        polly = PollyAdapter()
-        audio_url = polly.synthesize_speech(response_text)
-        polly_end_time = time.time()
-        polly_time = polly_end_time - polly_start_time
-        print(f"Polly time: {polly_time} seconds")
-        print(audio_url)
+        polly_adapter = PollyAdapter()
+        audio_url = polly_adapter.synthesize_speech(response_text)
+        processing_times["speech_synthesis"] = time.time() - polly_start_time
+        
+        total_time = time.time() - start_time
+        
+        return AudioProcessingResponse(
+            input_audio=s3_url,
+            transcription=transcription,
+            response_text=response_text,
+            response_audio=audio_url,
+            processing_time=processing_times,
+            total_time=total_time
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Audio processing failed: {str(e)}")
+
+
+@router.post("/upload", summary="Upload audio file to S3")
+async def upload_audio(file: UploadFile = File(...)):
+    """Upload an audio file to S3 and return the S3 URL."""
+    try:
+        start_time = time.time()
+        s3_adapter = S3Adapter()
+        s3_url = await s3_adapter.upload_audio(file.file, file.filename)
+        processing_time = time.time() - start_time
         
         return {
             "input_audio": s3_url,
-            "transcription": text,
-            "response_audio": audio_url,
-            "response_text": response_text
+            "processing_time": processing_time,
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"S3 upload failed: {str(e)}")
 
-@router.post("/upload-audio",tags=["Audio"])
-async def process_audio(file: UploadFile):
-    try:
-        # 1. Upload to S3
-        s3_start_time = time.time()
-        s3 = S3Adapter()
-        s3_url = await s3.upload_audio(file.file, file.filename)
-        s3_end_time = time.time()
-        s3_time = s3_end_time - s3_start_time
-        print(f"S3 upload time: {s3_time} seconds")
-       
-        return {
-            "input_audio": s3_url,
-            "time": s3_time,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    
-@router.post("/transcribe-audio",tags=["Transcribe"])
-async def process_audio(s3_url: str):
-    try:
 
-        # 2. Transcribe audio
-        transcribe_start_time = time.time()
-        transcribe = TranscribeAdapter()
-        text = transcribe.transcribe_audio(s3_url)
-        transcribe_end_time = time.time()
-        transcribe_time = transcribe_end_time - transcribe_start_time
-        print(f"Transcribe time: {transcribe_time} seconds")
-        print(text)
-        
-       
+@router.post("/transcribe", summary="Transcribe audio from S3 URL")
+async def transcribe_audio(request: TranscriptionRequest):
+    """Transcribe audio from an S3 URL."""
+    try:
+        start_time = time.time()
+        transcribe_adapter = TranscribeAdapter()
+        transcription = transcribe_adapter.transcribe_audio(request.s3_url)
+        processing_time = time.time() - start_time
         
         return {
-            "transcription": text,
-            "time": transcribe_time,
+            "transcription": transcription,
+            "processing_time": processing_time,
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
-@router.post("/generate_response",tags=["LLM"])
-async def process_audio(text: str):
+
+@router.post("/generate-response", summary="Generate LLM response from text")
+async def generate_response(request: TextProcessingRequest):
+    """Generate a response from Claude using the provided text."""
     try:
-        # Generate LLM response
-        llm_start_time = time.time()
-        claude = ClaudeHandler()
-        response_text = claude.generate_response(text)
-        llm_end_time = time.time()
-        llm_time = llm_end_time - llm_start_time
-        print(f"LLM time: {llm_time} seconds")
-        print(response_text)
-       
+        start_time = time.time()
+        claude_handler = ClaudeHandler()
+        response_text = claude_handler.generate_response(request.text)
+        processing_time = time.time() - start_time
         
         return {
             "response_text": response_text,
-            "time": llm_time,
+            "processing_time": processing_time,
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    
-@router.post("/synthesize_speech",tags=["Polly"])
-async def process_audio(response_text: str):
+        raise HTTPException(status_code=500, detail=f"LLM processing failed: {str(e)}")
+
+
+@router.post("/synthesize-speech", summary="Convert text to speech using Amazon Polly")
+async def synthesize_speech(request: TextProcessingRequest):
+    """Convert text to speech using Amazon Polly."""
     try:
-       
-        
-        # Convert to speech
-        polly_start_time = time.time()
-        polly = PollyAdapter()
-        audio_url = polly.synthesize_speech(response_text)
-        polly_end_time = time.time()
-        polly_time = polly_end_time - polly_start_time
-        print(f"Polly time: {polly_time} seconds")
-        print(audio_url)
+        start_time = time.time()
+        polly_adapter = PollyAdapter()
+        audio_url = polly_adapter.synthesize_speech(request.text)
+        processing_time = time.time() - start_time
         
         return {
-
             "response_audio": audio_url,
-            "time": polly_time
+            "processing_time": processing_time
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    
-@router.post("/test-audio-streaming/", response_model=Dict[str, str],tags=["Audio-Streaming"])
-async def transcribe_endpoint(file: UploadFile = File(...), language: str = "ar-SA"):
-    """Endpoint to receive audio file and return transcript"""
-    
-    # Create transcription service
-    transcription_service = AudioTranscriptionService()
-    
-    # Create temp file for processing
-    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_audio:
-        # Write uploaded file to temp location
-        content = await file.read()
-        temp_audio.write(content)
-        audio_path = temp_audio.name
-        print(f"Audio path: {audio_path}")
+        raise HTTPException(status_code=500, detail=f"Speech synthesis failed: {str(e)}")
+
+
+# Streaming endpoints
+@router.post("/streaming/transcribe", summary="Transcribe audio using streaming")
+async def transcribe_streaming(file: UploadFile = File(...), language: str = "en-US"):
+    """Transcribe audio using AWS Transcribe streaming service."""
+    audio_path = None
     
     try:
+        # Create transcription service
+        transcription_service = AudioTranscriptionService()
+        
+        # Create temp file for processing
+        audio_path = await create_temp_audio_file(file)
+        
         # Process the audio file
+        start_time = time.time()
         transcript = await transcription_service.process_audio_file(audio_path, language)
+        processing_time = time.time() - start_time
         
-        if transcript:
-            return {"transcript": transcript}
-        else:
-            return {"error": "Failed to transcribe audio"}
+        if not transcript:
+            return JSONResponse(
+                status_code=422,
+                content={"error": "Failed to transcribe audio"}
+            )
+        
+        return {
+            "transcript": transcript,
+            "processing_time": processing_time
+        }
     except Exception as e:
-        return {"error": f"Transcription failed: {str(e)}"}
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Transcription failed: {str(e)}"}
+        )
     finally:
-        # Clean up temp input file
-        try:
-            if os.path.exists(audio_path):
-                os.unlink(audio_path)
-        except:
-            pass
+        if audio_path:
+            clean_temp_file(audio_path)
 
 
-@router.post("/process-audio/full",tags=["Full-Audio-Processing-Streaming"])
-async def process_audio(file: UploadFile = File(...), language: str = "ar-SA"):
+@router.post("/streaming/text-to-speech", summary="Process text to speech")
+async def process_text_to_speech(request: TextProcessingRequest):
+    """
+    Process text through LLM and speech synthesis:
+    1. Generate LLM response
+    2. Convert to speech
+    """
+    start_time = time.time()
+    processing_times = {}
+    
     try:
+        # 1. Generate LLM response
+        llm_start_time = time.time()
+        claude_handler = ClaudeHandler()
+        response_text = claude_handler.generate_response(request.text)
+        processing_times["llm_processing"] = time.time() - llm_start_time
         
+        # 2. Convert to speech
+        polly_start_time = time.time()
+        polly_adapter = PollyAdapter()
+        audio_url = polly_adapter.synthesize_speech(response_text)
+        processing_times["speech_synthesis"] = time.time() - polly_start_time
         
+        total_time = time.time() - start_time
+        
+        return {
+            "response_text": response_text,
+            "response_audio": audio_url,
+            "processing_time": processing_times,
+            "total_time": total_time
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Text processing failed: {str(e)}")
+
+
+@router.post("/streaming/complete", summary="Process audio with streaming services")
+async def process_audio_streaming_complete(file: UploadFile = File(...), language: str = "en-US"):
+    """
+    Process audio through the complete pipeline using streaming services:
+    1. Transcribe audio using streaming
+    2. Generate LLM response
+    3. Convert response to speech
+    """
+    start_time = time.time()
+    processing_times = {}
+    audio_path = None
+    
+    try:
         # 1. Transcribe audio
         transcribe_start_time = time.time()
         transcription_service = AudioTranscriptionService()
         
         # Create temp file for processing
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_audio:
-            # Write uploaded file to temp location
-            content = await file.read()
-            temp_audio.write(content)
-            audio_path = temp_audio.name
-            print(f"Audio path: {audio_path}")
+        audio_path = await create_temp_audio_file(file)
         
-        try:
-            # Process the audio file
-            transcript = await transcription_service.process_audio_file(audio_path, language)
-            
-            if not transcript:
-                return {"error": "Failed to transcribe audio"}
-        except Exception as e:
-            return {"error": f"Transcription failed: {str(e)}"}
-        finally:
-            # Clean up temp input file
-            try:
-                if os.path.exists(audio_path):
-                    os.unlink(audio_path)
-            except:
-                pass
-        transcript_end_time = time.time()
-        transcript_time = transcript_end_time - transcribe_start_time
-        print(f"Transcript time: {transcript_time} seconds")
-
+        # Process the audio file
+        transcript = await transcription_service.process_audio_file(audio_path, language)
+        processing_times["transcription"] = time.time() - transcribe_start_time
+        
+        if not transcript:
+            return JSONResponse(
+                status_code=422,
+                content={"error": "Failed to transcribe audio"}
+            )
+        
         # 2. Generate LLM response
         llm_start_time = time.time()
-        claude = ClaudeHandler()
-        response_text = claude.generate_response(transcript)
-        llm_end_time = time.time()
-        llm_time = llm_end_time - llm_start_time
-        print(f"LLM time: {llm_time} seconds")
-        print(response_text)
+        claude_handler = ClaudeHandler()
+        response_text = claude_handler.generate_response(transcript)
+        processing_times["llm_processing"] = time.time() - llm_start_time
         
         # 3. Convert to speech
         polly_start_time = time.time()
-        polly = PollyAdapter()
-        audio_url = polly.synthesize_speech(response_text)
-        polly_end_time = time.time()
-        polly_time = polly_end_time - polly_start_time
-        print(f"Polly time: {polly_time} seconds")
-        print(audio_url)
+        polly_adapter = PollyAdapter()
+        audio_url = polly_adapter.synthesize_speech(response_text)
+        processing_times["speech_synthesis"] = time.time() - polly_start_time
+        
+        total_time = time.time() - start_time
         
         return {
             "transcription": transcript,
+            "response_text": response_text,
             "response_audio": audio_url,
-            "response_text": response_text
+            "processing_time": processing_times,
+            "total_time": total_time
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Audio processing failed: {str(e)}")
+    finally:
+        if audio_path:
+            clean_temp_file(audio_path)

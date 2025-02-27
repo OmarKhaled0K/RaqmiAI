@@ -155,4 +155,9 @@ pip install -r requirements.txt
 ```bash
 uvicorn main:app --reload
 ```
+4. 
+# Build the production image
+docker-compose -f docker/docker-compose.yml -f docker/docker-compose.prod.yml build
 
+# Start the production container
+docker-compose -f docker/docker-compose.yml -f docker/docker-compose.prod.yml up -d
